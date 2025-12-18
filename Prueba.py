@@ -124,10 +124,6 @@ class Scraper(object):
         time.sleep(1)
 
     def get_users(self, group="following", limit=5, verbose=False):
-        import re
-        import time
-        import random
-        from selenium.webdriver.common.by import By
 
         USERNAME_RE = re.compile(r"^[a-zA-Z0-9._]{1,30}$")
 
