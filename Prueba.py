@@ -386,7 +386,7 @@ class Scraper(object):
         return results
     
     def get_profile_info(self, username):
-        
+
         data = {
             "username": username,
             "nombre": None,
@@ -399,71 +399,75 @@ class Scraper(object):
         }
 
         self.driver.get(f"https://www.instagram.com/{username}/")
+        time.sleep(4)
 
+        # =========================
+        # 1️⃣ ESPERAR HEADER REAL
+        # =========================
         try:
             WebDriverWait(self.driver, 15).until(
-                EC.presence_of_element_located((By.TAG_NAME, "main"))
+                EC.presence_of_element_located((By.TAG_NAME, "header"))
             )
         except:
             return data
 
-        # =========================
-        # 1️⃣ CUENTA PRIVADA
-        # =========================
-        if self.driver.find_elements(
-            By.XPATH, "//*[contains(text(),'This Account is Private')]"
-        ):
-            data["privada"] = True
-            return data
+        page = self.driver.page_source.lower()
 
         # =========================
-        # 2️⃣ META DESCRIPTION (CLAVE)
+        # 2️⃣ CUENTA PRIVADA
+        # =========================
+        if "this account is private" in page or "cuenta es privada" in page:
+            data["privada"] = True
+
+        # =========================
+        # 3️⃣ SCRIPT JSON (LD+JSON)
         # =========================
         try:
-            meta = self.driver.find_element(By.XPATH, "//meta[@name='description']")
-            content = meta.get_attribute("content")
+            script = self.driver.find_element(
+                By.XPATH, "//script[@type='application/ld+json']"
+            )
+            import json
+            j = json.loads(script.get_attribute("innerText"))
 
-            # Ejemplo:
-            # "396M Followers, 700 Following, 7,600 Posts - Dwayne Johnson (@therock) on Instagram: “Founder of Seven Bucks...”"
+            data["nombre"] = j.get("name")
+            data["bio"] = j.get("description")
 
-            if content:
-                # Seguidores
-                m = re.search(r"([\d,.]+)\s+Followers", content, re.I)
-                if m:
-                    data["seguidores"] = m.group(1)
-
-                # Seguidos
-                m = re.search(r"([\d,.]+)\s+Following", content, re.I)
-                if m:
-                    data["seguidos"] = m.group(1)
-
-                # Posts
-                m = re.search(r"([\d,.]+)\s+Posts", content, re.I)
-                if m:
-                    data["posts"] = m.group(1)
-
-                # Nombre
-                m = re.search(r"-\s+(.*?)\s+\(@", content)
-                if m:
-                    data["nombre"] = m.group(1).strip()
-
-                # Bio
-                m = re.search(r"Instagram:\s+“(.+?)”", content)
-                if m:
-                    data["bio"] = m.group(1).strip()
-
+            stats = j.get("interactionStatistic", [])
+            for s in stats:
+                if s.get("name") == "Followers":
+                    data["seguidores"] = int(s.get("userInteractionCount"))
         except:
             pass
 
         # =========================
-        # 3️⃣ VERIFICADA (SVG)
+        # 4️⃣ FALLBACK: TEXTO VISIBLE
         # =========================
-        data["verificada"] = bool(
-            self.driver.find_elements(
-                By.XPATH,
-                "//*[local-name()='svg' and @aria-label='Verified']"
-            )
-        )
+        try:
+            spans = self.driver.find_elements(By.XPATH, "//header//span")
+            nums = []
 
-        time.sleep(1.2)
+            for s in spans:
+                t = s.text.replace(",", "").replace(".", "")
+                if t.isdigit():
+                    nums.append(int(t))
+
+            # Orden típico: posts, seguidores, seguidos
+            if len(nums) >= 3:
+                data["posts"] = nums[0]
+                data["seguidores"] = data["seguidores"] or nums[1]
+                data["seguidos"] = nums[2]
+        except:
+            pass
+
+        # =========================
+        # 5️⃣ VERIFICADA
+        # =========================
+        try:
+            self.driver.find_element(
+                By.XPATH, "//svg[@aria-label='Verified']"
+            )
+            data["verificada"] = True
+        except:
+            pass
+
         return data

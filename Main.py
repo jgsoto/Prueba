@@ -23,7 +23,7 @@ def scrape():
     # 1️⃣ Obtener SOLO 100 seguidos
     seguidos = scraper.get_users(
         group="following",
-        limit=100,
+        limit=50,
         verbose=True
     )
 
